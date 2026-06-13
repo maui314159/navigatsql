@@ -68,6 +68,7 @@ On any machine with the .NET 10 runtime:
 
 ```bash
 dotnet tool install --global navigatsql
+navigatsql --trusty-setup                                  # how to wire into trusty-search
 navigatsql --emit kggraph path/to/repo > repo-kggraph.json
 ```
 
@@ -92,6 +93,7 @@ cd navigatsql
 
 dotnet pack -c Release -o ./nupkg
 dotnet tool install --global --add-source ./nupkg navigatsql
+navigatsql --trusty-setup                                  # how to wire into trusty-search
 ```
 
 ### Self-contained binary (arbitrary servers, no .NET runtime)
@@ -108,6 +110,7 @@ dotnet publish -c Release -r linux-x64 --self-contained \
 
 # ./publish/navigatsql is a single file — drop it onto the server's PATH:
 scp ./publish/navigatsql server:/usr/local/bin/
+ssh server navigatsql --trusty-setup                       # how to wire into trusty-search
 ssh server navigatsql --emit kggraph /srv/app > app-kggraph.json
 ```
 
@@ -223,6 +226,10 @@ idempotency contract *a node is its id; an edge is `(from, to, relation)`*.
 `--emit kggraph` is not just a dump format — it is the **native ingest body** for
 trusty-search's contributed-graph endpoint. There is no converter and no shim: the
 document POSTs as-is. Which path you use depends only on whether you run trusty-search.
+
+> **TL;DR — run `navigatsql --trusty-setup`.** It prints this whole recipe (endpoint,
+> version requirement, the exact `curl`) to stderr and exits, so it's safe to run any
+> time — including as the last step of an install.
 
 > **Version requirement.** The ingest endpoint lives on **trusty-search**, not
 > trusty-analyze, and shipped in **trusty-search ≥ 0.24.5** (ADR-0009, merged in
