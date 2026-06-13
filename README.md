@@ -218,6 +218,77 @@ idempotency contract *a node is its id; an edge is `(from, to, relation)`*.
   timestamps or machine names; identical inputs (in any order, same tree) produce
   byte-identical documents, so re-ingest is a no-op merge.
 
+## Feeding the graph (trusty-tools integration)
+
+`--emit kggraph` is not just a dump format — it is the **native ingest body** for
+trusty-search's contributed-graph endpoint. There is no converter and no shim: the
+document POSTs as-is. Which path you use depends only on whether you run trusty-search.
+
+> **Version requirement.** The ingest endpoint lives on **trusty-search**, not
+> trusty-analyze, and shipped in **trusty-search ≥ 0.24.5** (ADR-0009, merged in
+> [trusty-tools#1129](https://github.com/bobmatnyc/trusty-tools/pull/1129)). Earlier
+> daemons (0.24.0–0.24.4) don't register the route and return a bare `404` for the
+> `POST` — check yours with `curl -s http://127.0.0.1:7878/health` (the `version` field)
+> and upgrade (`POST /upgrade {"check":true}` then `{"confirm":true}`) before wiring the
+> pipeline. Until then, use the standalone path below.
+
+### 1. Ingest into trusty-search (the intended path)
+
+trusty-search exposes `POST /indexes/{id}/graph` — a durable **contributed graph
+overlay** that survives restart *and* reindex, stored separately from the chunk-derived
+graph. navigaT-SQL's `--emit kggraph` document is exactly that endpoint's wire shape, so
+you pipe one straight into the other:
+
+```bash
+# the daemon defaults to http://127.0.0.1:7878; {id} is an existing index id
+# (list them with the trusty-search `list_indexes` MCP tool, or GET /indexes).
+ID=my-index
+
+navigatsql --emit kggraph path/to/repo \
+  | curl -sS -X POST "http://127.0.0.1:7878/indexes/$ID/graph" \
+         -H 'content-type: application/json' --data-binary @-
+```
+
+The JSON response reports what landed plus the post-merge graph totals:
+
+```json
+{ "producer": "navigatsql", "replaced": true,
+  "nodes_received": 412, "edges_received": 3010,
+  "graph_nodes": 18233, "graph_edges": 51904,
+  "unknown_edge_tags_dropped": 0 }
+```
+
+- **Replace-per-producer.** Each ingest atomically replaces navigaT-SQL's *previous*
+  contribution to that index — so tables/procs deleted from the codebase never leave
+  stale edges; just re-run after a scan. The index's derived graph and any other
+  producer's contribution are untouched.
+- **Identity is self-contained.** Contributed canonical ids (`db.schema.table`,
+  schema-qualified routines, `Class.Method`) are stored as their own nodes, never merged
+  into trusty-search's bare-name code symbols, so the cross-tier `method → proc → table`
+  chain stays sound regardless of the host graph.
+- **Schema is logged, not enforced** — `navigatsql/kggraph@2` ingests fine; the field set
+  is the contract. The endpoint reads `nodes` + `edges` and ignores the `facts` array
+  (see below). Errors: `400` if `producer` is empty, `404` if the index id is unknown.
+
+Then traverse the merged graph with `GET /indexes/{id}/graph/neighbors`
+(`node`, `direction=in|out|both`, `edge_kinds=writes,reads,…`, `max_hops=1..4`) or the
+trusty-search `search_kg` MCP tool — e.g. *"what writes table X"* is
+`?node=db.dbo.x&direction=in&edge_kinds=writes`.
+
+**Dynamic-SQL facts (optional).** The graph endpoint ignores the `facts` array —
+dynamic-SQL flags aren't node→node edges. If you want them queryable, load each
+`(subject, predicate, object)` triple into trusty-analyze's FactStore via its
+`upsert_fact` MCP tool. This is optional enrichment; the graph is complete without it.
+
+### 2. Standalone (no trusty-search)
+
+`--emit edges` (per-occurrence) and `--emit kggraph` (deduplicated) are both plain JSON on
+stdout. Consume them directly — load into any graph/store, diff two runs, or query with
+`jq`. `EdgeKindTag` (`custom:<relation>`) is the stable key if you ingest elsewhere.
+
+A one-shot `navigatsql push` subcommand wrapping the `curl` above is the only convenience
+still on the roadmap; the wire contract itself is complete and live today.
+
 ## Scope & limits (honest)
 
 Flagged rather than silently resolved:
@@ -249,11 +320,12 @@ table identity + noise exclusion; the C#→proc bridge.
 - **Construct concept nodes** in kggraph (`construct:*` + `custom:uses_*`) so "where is X used?" is a one-call graph query ([#5](https://github.com/maui314159/navigatsql/issues/5)).
 - **Column-level lineage** — the high-ceiling next step.
 - Harden heuristics: interpolated/concatenated SQL, `.Set<T>()`, Fluent-API `HasForeignKey`.
-- An **ingest adapter** into trusty-tools — the wire shape ships (`--emit kggraph`,
-  per trusty-tools ADR-0009) and now carries the `producer` envelope the receiving
-  endpoint (`POST /indexes/{id}/graph` on trusty-search,
-  [trusty-tools#1129](https://github.com/bobmatnyc/trusty-tools/pull/1129)) requires, so
-  output POSTs without a shim. Remaining: a one-shot push subcommand wrapping the `curl`.
+- A one-shot **`push` subcommand** wrapping the ingest `curl`. The wire contract is
+  already complete and live: `--emit kggraph` POSTs as-is to trusty-search's
+  `POST /indexes/{id}/graph` endpoint (ADR-0009, in trusty-search ≥ 0.24.5 via
+  [trusty-tools#1129](https://github.com/bobmatnyc/trusty-tools/pull/1129)) — see
+  [Feeding the graph](#feeding-the-graph-trusty-tools-integration). The subcommand is
+  pure convenience over the documented pipe.
 
 ## License
 
