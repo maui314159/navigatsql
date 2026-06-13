@@ -1,0 +1,252 @@
+# navigaT-SQL
+
+> **naviga·T-SQL** — *navigate* your T-SQL. The sidekick to [trusty-tools](https://github.com/bobmatnyc/trusty-tools): where `trusty` is a play on *Rust*, `navigaT-SQL` hides *T-SQL* inside *navigate*.
+
+A small .NET tool that parses **T-SQL** with Microsoft **ScriptDom** and extracts the
+**resource / data-flow relationships** a codebase's stored procedures have with tables
+and with each other — the layer that call-graph and tree-sitter tools don't model.
+
+It emits relations as graph **edges** tagged with the exact `custom:<relation>` string
+that trusty-tools' extensible knowledge graph (`EdgeKind::Custom`) accepts, so the output
+is directly ingestible with no core change beyond the extensible-edge work.
+
+## Why this exists
+
+Across mature code-intelligence tools, **nobody models the cross-tier database
+dependency graph** (verified against GitNexus and codebase-memory-mcp): GitNexus has no
+standalone SQL at all; codebase-memory-mcp parses SQL with a generic tree-sitter grammar
+but **drops stored procedures entirely** and has no SQL data-flow edges. tree-sitter SQL
+grammars are too weak for real T-SQL — which is why this uses ScriptDom, the canonical,
+MIT-licensed Microsoft T-SQL parser.
+
+The host-language (C#) side is **already indexed by trusty-search**, so the genuinely new
+work is (1) the T-SQL relation graph (this tool) and (2) the C# → proc bridge (roadmap).
+
+## What it extracts
+
+For every `CREATE` / `ALTER PROCEDURE` (statements outside a proc are attributed to
+`<script-level>`):
+
+| Relation | T-SQL construct | Edge tag |
+|---|---|---|
+| `reads_table` | `FROM` / `JOIN` sources; `MERGE … USING` source | `custom:reads_table` |
+| `writes_table` | `INSERT` / `UPDATE` / `DELETE` / `MERGE` target (`UPDATE p … FROM dbo.T AS p` aliases resolved) | `custom:writes_table` |
+| `calls_proc` | `EXEC procname` | `custom:calls_proc` |
+| `calls_function` | scalar UDF calls (`dbo.fn_X(…)`); table-valued UDFs in `FROM` (`dbo.tvf_X(…)`) — built-ins skipped | `custom:calls_function` |
+| `references` | foreign keys (`CREATE`/`ALTER TABLE … FOREIGN KEY`) — `table -> table` | `custom:references` |
+| `dynamic_sql` | `sp_executesql`, `sp_execute`, `EXEC(@sql)` — **flagged, never silently dropped** | `custom:dynamic_sql` |
+
+`CREATE`/`ALTER FUNCTION` and `CREATE`/`ALTER VIEW` bodies are scopes too
+(`FromKind: function` / `view`), so their own `reads_table`/`writes_table` extend the
+transitive `proc → function/view → table` graph (view expansion).
+
+**C# pass (Roslyn):** for every C# member, `csharp_method --calls_proc--> proc`, from
+stored-proc-name string literals (`usp_*`/`sp_*`/`qry_*`) at data-access call sites.
+Chaining these with the T-SQL `proc -> table` edges reconstructs the cross-tier
+**method -> proc -> table** dependency that no tree-sitter tool models. Validated on a
+real ~1,000-proc production codebase: **96%** of C# proc references resolve to an extracted
+proc; **882** C# methods transitively reach **3,010** distinct method→table pairs.
+
+**Embedded SQL (Dapper / raw queries):** string literals that look like SQL are parsed
+with the T-SQL pass and their table reads/writes attributed directly to the enclosing C#
+method — `csharp_method → reads_table/writes_table → table`. This recovers data access
+that lives in C# strings rather than in `.sql` files or stored-proc calls (the dominant
+pattern in Dapper-style codebases).
+
+## Installation
+
+navigaT-SQL is a single .NET 10 executable. Two supported ways to build and install it
+from this repo, mirroring the [trusty-tools](https://github.com/bobmatnyc/trusty-tools)
+install conventions — its from-source `cargo install` path and its prebuilt-binary path:
+
+### As a .NET global tool (from source)
+
+The analog of trusty-tools' `cargo install` from a crate path. Requires the .NET 10
+SDK/runtime on the machine; packs the project and installs a `navigatsql` command:
+
+```bash
+git clone https://github.com/maui314159/navigatsql
+cd navigatsql
+
+dotnet pack -c Release -o ./nupkg
+dotnet tool install --global --add-source ./nupkg navigatsql
+
+navigatsql --emit kggraph path/to/repo > repo-kggraph.json
+```
+
+The command lands in `~/.dotnet/tools` — add it to `PATH` if it isn't already
+(`export PATH="$PATH:$HOME/.dotnet/tools"`). Update or remove with
+`dotnet tool update --global --add-source ./nupkg navigatsql` /
+`dotnet tool uninstall --global navigatsql`.
+
+> **Runtime discovery.** A global tool is framework-dependent: it needs the .NET runtime
+> to be discoverable. If .NET was installed where the apphost can't auto-find it — notably
+> **Homebrew** on macOS — the tool prints *"You must install .NET to run this
+> application."* Fix by pointing `DOTNET_ROOT` at the runtime, e.g.
+> `export DOTNET_ROOT="$(brew --prefix dotnet)/libexec"`. Official-installer, `apt`, and
+> tarball installs register their location and need no such step. (Or use the
+> self-contained binary below — it bundles the runtime and never needs `DOTNET_ROOT`.)
+
+### Self-contained binary (arbitrary servers, no .NET runtime)
+
+The analog of trusty-tools' prebuilt Homebrew binary. Produces one standalone executable
+with the runtime bundled in — copy it to any server of the same OS/architecture and run
+it; **no .NET install required on the target**:
+
+```bash
+# choose the target's runtime identifier (RID):
+#   linux-x64 · linux-arm64 · win-x64 · osx-arm64 · osx-x64
+dotnet publish -c Release -r linux-x64 --self-contained \
+  -p:PublishSingleFile=true -o ./publish
+
+# ./publish/navigatsql is a single file — drop it onto the server's PATH:
+scp ./publish/navigatsql server:/usr/local/bin/
+ssh server navigatsql --emit kggraph /srv/app > app-kggraph.json
+```
+
+### Build & test (development)
+
+```bash
+dotnet build                          # build the exe (net10.0), no install
+dotnet test tests/NavigaTSql.Tests    # full xUnit suite
+dotnet run -- <file.sql | dir>        # run straight from the repo
+```
+
+`dotnet run -- <args>` (used throughout this README) and the installed `navigatsql <args>`
+command are interchangeable. See [CLAUDE.md](./CLAUDE.md#development-workflow) for the full
+CI-gate workflow (format, warnings-as-errors, 500-line cap).
+
+## Usage
+
+```bash
+dotnet run -- <file.sql>            # single file
+dotnet run -- path/to/repo          # directory, recursive *.sql (T-SQL) + *.cs (C#)
+dotnet run -- a.sql b.sql dir/      # any mix
+
+# clean JSON on stdout, human summary on stderr — pipe the edges anywhere:
+dotnet run -- ~/src/myapp > myapp-edges.json
+
+# treat each .sql file's name as its database context (for whole-database dumps,
+# e.g. SALES_LIVE.sql -> sales_live.dbo.t); off by default:
+dotnet run -- --db-from-filename path/to/db-dumps
+
+# ingest wire shape (deduplicated nodes+edges+facts, ADR-0009):
+dotnet run -- --emit kggraph path/to/repo > repo-kggraph.json
+```
+
+- **stdout** is clean JSON (an array of edges) so it pipes straight into an ingest step.
+- **stderr** carries the summary + per-relation histogram. The **dynamic-SQL count is the
+  single most important number** for judging how much of a codebase a static extractor can
+  ever see.
+- **Error recovery:** a per-file parse error is reported and skipped (ScriptDom's partial
+  tree is still mined) — one bad script never sinks the run. Exit code is `0` on a completed
+  scan, `2` only for a usage error / no files found.
+
+### Output schema
+
+```json
+[
+  {
+    "File": "Procedures/usp_GetProperty.sql",
+    "From": "dbo.usp_GetProperty",
+    "FromKind": "proc",
+    "To": "dbo.Property",
+    "ToKind": "table",
+    "Relation": "reads_table",
+    "EdgeKindTag": "custom:reads_table"
+  }
+]
+```
+
+`File` is the source path (relative to the working directory) so multi-file output stays
+traceable. `EdgeKindTag` is the trusty-tools ingest key.
+
+### `--emit kggraph` — ingest document (trusty-tools ADR-0009 wire shape)
+
+The default `edges` mode emits one record **per occurrence**. `--emit kggraph`
+emits the deduplicated **ingest document** for trusty-tools'
+`POST /indexes/{id}/graph` (ADR-0009): nodes + edges + facts, with the
+idempotency contract *a node is its id; an edge is `(from, to, relation)`*.
+
+```json
+{
+  "schema": "navigatsql/kggraph@2",
+  "producer": "navigatsql",           // required by the ingest endpoint (400 if missing)
+  "producerVersion": "0.1.0",         // optional; this tool's assembly version
+  "gitSha": "dbfd800…",               // optional; HEAD of the scanned tree (omitted off-repo)
+  "nodes": [ { "id": "dbo.property", "kind": "table" } ],
+  "edges": [
+    {
+      "from": "dbo.usp_GetProperty", "fromKind": "proc",
+      "to": "dbo.property", "toKind": "table",
+      "kind": "reads",                  // coarse #817-aligned kind
+      "relation": "reads_table",        // fine-grained original
+      "tag": "custom:reads_table",      // Custom(String) escape-hatch key
+      "provenance": ["Procedures/usp_GetProperty.sql"],
+      "linkedServer": "srv"             // only when referenced via [srv].db.dbo.t
+    }
+  ],
+  "facts": [
+    { "subject": "dbo.usp_X", "predicate": "dynamic_sql", "object": "<dynamic>",
+      "provenance": ["Procedures/usp_X.sql"] }
+  ]
+}
+```
+
+- **Producer envelope:** `producer` is the constant `"navigatsql"` the trusty-search
+  ADR-0009 endpoint requires; `producerVersion` and `gitSha` are optional and follow
+  the `linkedServer` convention (camelCase, omitted when null). `gitSha` is the HEAD of
+  the scanned tree (`git -C <root> rev-parse HEAD`), enabling cheap staleness checks
+  (overlay-SHA vs repo-HEAD). It is resolved **once** per run, never per-file, and
+  degrades to omitted (never an error) outside a git repo. Multi-root scans that **span
+  repositories** omit `gitSha` rather than guess; roots sharing one HEAD keep it. The
+  `schema` is `@2` because the envelope added the always-present `producer` field — the
+  change is backward-compatible (an `@1` consumer still parses it) but the bump lets a
+  consumer tell enveloped output from pre-envelope output.
+- **Dedup + provenance:** identical `(from, to, relation)` assertions from many
+  files collapse into one edge whose `provenance` lists every source file.
+- **Facts split:** `dynamic_sql` flags are not node→node relations — they're
+  emitted as FactStore-shaped triples, and never mint a `<dynamic>` node.
+- **Deterministic:** output is ordinal-sorted everywhere and the envelope carries no
+  timestamps or machine names; identical inputs (in any order, same tree) produce
+  byte-identical documents, so re-ingest is a no-op merge.
+
+## Scope & limits (honest)
+
+Flagged rather than silently resolved:
+
+- **Dynamic SQL** (`sp_executesql` / `EXEC(@sql)`) — detected and counted, not parsed.
+- **CTE / temp-table / table-variable** names appear as their alias, not the underlying tables.
+- **Views** in a `FROM` are emitted as table reads, not recursively expanded.
+- **Database context** comes from a `USE <db>` statement, or — only with `--db-from-filename` —
+  from each `.sql` file's name. Without either, 1/2-part names canonicalize to `schema.table`
+  (no database qualifier) rather than guessing one.
+
+## Tests
+
+```bash
+dotnet test tests/NavigaTSql.Tests
+```
+
+201 xUnit tests cover the T-SQL passes (reads/writes/calls/UDF/views/dynamic/FK),
+canonical table identity + noise exclusion, the C# proc bridge + embedded SQL, the
+EF extractor, and the kggraph emit (dedup/provenance/facts/determinism). CI runs them on every push (`.github/workflows/ci.yml`).
+
+## Roadmap
+
+**Built:** file-SQL, embedded-SQL (Dapper), and EF/ORM (`--ef`) extraction; canonical
+table identity + noise exclusion; the C#→proc bridge.
+
+**Remaining:**
+- **JOIN-inferred relationships** for DBs that don't declare FKs ([#1](https://github.com/maui314159/navigatsql/issues/1)).
+- **Column-level lineage** — the high-ceiling next step.
+- Harden heuristics: interpolated/concatenated SQL, `.Set<T>()`, Fluent-API `HasForeignKey`.
+- An **ingest adapter** into trusty-tools — the wire shape ships (`--emit kggraph`,
+  per trusty-tools ADR-0009) and now carries the `producer` envelope the receiving
+  endpoint (`POST /indexes/{id}/graph` on trusty-search,
+  [trusty-tools#1129](https://github.com/bobmatnyc/trusty-tools/pull/1129)) requires, so
+  output POSTs without a shim. Remaining: a one-shot push subcommand wrapping the `curl`.
+
+## License
+
+MIT — see [LICENSE](./LICENSE). Optional by deployment: a codebase with no T-SQL never runs it.
