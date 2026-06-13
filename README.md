@@ -238,7 +238,8 @@ EF extractor, and the kggraph emit (dedup/provenance/facts/determinism). CI runs
 table identity + noise exclusion; the C#→proc bridge.
 
 **Remaining:**
-- **JOIN-inferred relationships** for DBs that don't declare FKs ([#1](https://github.com/maui314159/navigatsql/issues/1)).
+- **JOIN-inferred relationships** for DBs that don't declare FKs ([#4](https://github.com/maui314159/navigatsql/issues/4)).
+- **Construct concept nodes** in kggraph (`construct:*` + `custom:uses_*`) so "where is X used?" is a one-call graph query ([#5](https://github.com/maui314159/navigatsql/issues/5)).
 - **Column-level lineage** — the high-ceiling next step.
 - Harden heuristics: interpolated/concatenated SQL, `.Set<T>()`, Fluent-API `HasForeignKey`.
 - An **ingest adapter** into trusty-tools — the wire shape ships (`--emit kggraph`,
