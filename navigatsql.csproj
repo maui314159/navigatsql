@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>navigatsql</AssemblyName>
+    <RootNamespace>NavigaTSql</RootNamespace>
+    <!-- Surfaced as the kggraph envelope's producerVersion (#2). -->
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <!-- .NET global-tool packaging (#3): `dotnet pack` produces a tool package that
+       `dotnet tool install` (global) exposes as the `navigatsql` command, the .NET
+       analog of trusty-tools' `cargo install` from a crate path. For servers without
+       a .NET runtime, use the self-contained `dotnet publish` documented in the
+       README instead; a tool package is framework-dependent by design. -->
+  <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>navigatsql</ToolCommandName>
+    <PackageId>navigatsql</PackageId>
+    <Authors>GrowthCurve Capital</Authors>
+    <Description>Extracts cross-tier T-SQL + C# data-flow relationships as graph edges (trusty-tools sidekick).</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/maui314159/navigatsql</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/maui314159/navigatsql</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The test project lives under tests/; keep it out of the exe's compilation. -->
+    <Compile Remove="tests/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="180.18.1" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+  </ItemGroup>
+
+</Project>
