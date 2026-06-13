@@ -1,5 +1,9 @@
 # navigaT-SQL
 
+[![NuGet](https://img.shields.io/nuget/v/navigatsql.svg?logo=nuget&label=nuget)](https://www.nuget.org/packages/navigatsql)
+[![CI](https://github.com/maui314159/navigatsql/actions/workflows/ci.yml/badge.svg)](https://github.com/maui314159/navigatsql/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+
 > **naviga·T-SQL** — *navigate* your T-SQL. The sidekick to [trusty-tools](https://github.com/bobmatnyc/trusty-tools): where `trusty` is a play on *Rust*, `navigaT-SQL` hides *T-SQL* inside *navigate*.
 
 A small .NET tool that parses **T-SQL** with Microsoft **ScriptDom** and extracts the
