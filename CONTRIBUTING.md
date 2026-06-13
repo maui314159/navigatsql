@@ -49,11 +49,18 @@ A `.pre-commit-config.yaml` wires these plus conventional-commit validation; ins
 
 See [CLAUDE.md](./CLAUDE.md) for a deeper tour of the architecture and the invariants to preserve.
 
-## Pull requests
+## PR & merge policy
 
-1. Branch off `main`.
-2. Make the change and add/adjust tests.
-3. Run the gates above.
-4. Open the PR with a conventional-commit-style title and a clear description.
+This repo mirrors the [trusty-tools](https://github.com/bobmatnyc/trusty-tools) workflow.
+`main` is protected — every change lands via PR:
+
+1. **Branch off `main`** (direct pushes to `main` are blocked).
+2. **Make atomic, conventional commits** — each should build and pass tests; use `feat:` / `fix:` / `docs:` / … .
+3. **Run the gate suite locally** (above) and add/adjust tests.
+4. **Open a PR** with a conventional-commit-style title; reference the issue it addresses (`Closes #NN`).
+5. **CI must pass** — all required checks are enforced; nothing merges while red. No human-reviewer
+   approval is required (the gates are the reviewer), though review is always welcome.
+6. PRs are **squash-merged** and the source branch is **auto-deleted** — one squashed commit per PR
+   keeps `main`'s history linear and readable.
 
 By contributing, you agree that your contributions are licensed under the [MIT License](./LICENSE).
