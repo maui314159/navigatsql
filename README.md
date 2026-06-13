@@ -55,14 +55,32 @@ pattern in Dapper-style codebases).
 
 ## Installation
 
-navigaT-SQL is a single .NET 10 executable. Two supported ways to build and install it
-from this repo, mirroring the [trusty-tools](https://github.com/bobmatnyc/trusty-tools)
-install conventions — its from-source `cargo install` path and its prebuilt-binary path:
+navigaT-SQL ships as a published [.NET global tool](https://www.nuget.org/packages/navigatsql),
+with from-source and self-contained options too.
 
-### As a .NET global tool (from source)
+### From NuGet (recommended)
 
-The analog of trusty-tools' `cargo install` from a crate path. Requires the .NET 10
-SDK/runtime on the machine; packs the project and installs a `navigatsql` command:
+On any machine with the .NET 10 runtime:
+
+```bash
+dotnet tool install --global navigatsql
+navigatsql --emit kggraph path/to/repo > repo-kggraph.json
+```
+
+Update or remove with `dotnet tool update --global navigatsql` /
+`dotnet tool uninstall --global navigatsql`. The command lands in `~/.dotnet/tools`; add
+that to `PATH` if it isn't already (`export PATH="$PATH:$HOME/.dotnet/tools"`).
+
+> **Runtime discovery.** A global tool is framework-dependent. If .NET was installed where
+> the apphost can't auto-find it — notably **Homebrew** on macOS — the tool prints *"You must
+> install .NET to run this application."* Fix by pointing `DOTNET_ROOT` at the runtime, e.g.
+> `export DOTNET_ROOT="$(brew --prefix dotnet)/libexec"`. Official-installer, `apt`, and
+> tarball installs register their location and need no such step. (Or use the self-contained
+> binary below — it bundles the runtime and never needs `DOTNET_ROOT`.)
+
+### From source
+
+Build and install from a clone — requires the .NET 10 SDK:
 
 ```bash
 git clone https://github.com/maui314159/navigatsql
@@ -70,22 +88,7 @@ cd navigatsql
 
 dotnet pack -c Release -o ./nupkg
 dotnet tool install --global --add-source ./nupkg navigatsql
-
-navigatsql --emit kggraph path/to/repo > repo-kggraph.json
 ```
-
-The command lands in `~/.dotnet/tools` — add it to `PATH` if it isn't already
-(`export PATH="$PATH:$HOME/.dotnet/tools"`). Update or remove with
-`dotnet tool update --global --add-source ./nupkg navigatsql` /
-`dotnet tool uninstall --global navigatsql`.
-
-> **Runtime discovery.** A global tool is framework-dependent: it needs the .NET runtime
-> to be discoverable. If .NET was installed where the apphost can't auto-find it — notably
-> **Homebrew** on macOS — the tool prints *"You must install .NET to run this
-> application."* Fix by pointing `DOTNET_ROOT` at the runtime, e.g.
-> `export DOTNET_ROOT="$(brew --prefix dotnet)/libexec"`. Official-installer, `apt`, and
-> tarball installs register their location and need no such step. (Or use the
-> self-contained binary below — it bundles the runtime and never needs `DOTNET_ROOT`.)
 
 ### Self-contained binary (arbitrary servers, no .NET runtime)
 
