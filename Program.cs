@@ -225,11 +225,16 @@ static void PrintWiringGuide()
     w.WriteLine("  upgrade: curl -s -X POST http://127.0.0.1:7878/upgrade \\");
     w.WriteLine("             -H 'content-type: application/json' -d '{\"confirm\":true}'");
     w.WriteLine();
-    w.WriteLine("Ingest (replace-per-producer; just re-run after each scan):");
+    w.WriteLine("Ingest (replace-per-producer):");
     w.WriteLine("  ID=<your index id>      # list: curl -s http://127.0.0.1:7878/indexes");
     w.WriteLine("  navigatsql --emit kggraph <repo> \\");
     w.WriteLine("    | curl -sS -X POST http://127.0.0.1:7878/indexes/$ID/graph \\");
     w.WriteLine("           -H 'content-type: application/json' --data-binary @-");
+    w.WriteLine();
+    w.WriteLine("When to re-run: navigaT-SQL is one-shot (no watcher). Re-run the pipe");
+    w.WriteLine("  whenever the SQL/C# source changes; a trusty-search reindex does NOT");
+    w.WriteLine("  refresh this overlay, so the refresh is on you. Replace-per-producer");
+    w.WriteLine("  makes re-POSTing safe and idempotent -- wire it into CI on merge.");
     w.WriteLine();
     w.WriteLine("Query:      GET /indexes/{id}/graph/neighbors  (or the search_kg MCP tool)");
     w.WriteLine("Standalone: no trusty-search? --emit kggraph / --emit edges is plain JSON;");

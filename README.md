@@ -267,8 +267,8 @@ The JSON response reports what landed plus the post-merge graph totals:
 
 - **Replace-per-producer.** Each ingest atomically replaces navigaT-SQL's *previous*
   contribution to that index — so tables/procs deleted from the codebase never leave
-  stale edges; just re-run after a scan. The index's derived graph and any other
-  producer's contribution are untouched.
+  stale edges; just re-run after a source change. The index's derived graph and any
+  other producer's contribution are untouched.
 - **Identity is self-contained.** Contributed canonical ids (`db.schema.table`,
   schema-qualified routines, `Class.Method`) are stored as their own nodes, never merged
   into trusty-search's bare-name code symbols, so the cross-tier `method → proc → table`
@@ -276,6 +276,15 @@ The JSON response reports what landed plus the post-merge graph totals:
 - **Schema is logged, not enforced** — `navigatsql/kggraph@2` ingests fine; the field set
   is the contract. The endpoint reads `nodes` + `edges` and ignores the `facts` array
   (see below). Errors: `400` if `producer` is empty, `404` if the index id is unknown.
+
+> **When to re-run.** navigaT-SQL is one-shot — there's no watcher or daemon, so
+> refreshing the overlay is on you. Re-run the pipe above whenever the T-SQL / C#
+> source changes in a way that touches data-flow (new or dropped procs, tables, EF
+> entities, embedded SQL); wire it into CI on merge to `main`, or a post-merge hook.
+> A trusty-search **reindex does not refresh this contribution** — it deliberately
+> survives reindex (above) — so a schema change needs an explicit navigaT-SQL re-run.
+> Replace-per-producer makes that safe and idempotent: an unchanged source re-POSTs to
+> a no-op merge (output is deterministic), so there's no harm in re-running too often.
 
 Then traverse the merged graph with `GET /indexes/{id}/graph/neighbors`
 (`node`, `direction=in|out|both`, `edge_kinds=writes,reads,…`, `max_hops=1..4`) or the
