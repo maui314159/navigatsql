@@ -79,4 +79,19 @@ This repo mirrors the [trusty-tools](https://github.com/bobmatnyc/trusty-tools) 
 6. PRs are **squash-merged** and the source branch is **auto-deleted** — one squashed commit per PR
    keeps `main`'s history linear and readable.
 
+## Releasing (NuGet)
+
+The CLI is published to nuget.org as a .NET global tool (`dotnet tool install --global navigatsql`)
+via [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) — **no API
+key is stored**. `.github/workflows/release.yml` mints a short-lived key through GitHub OIDC and pushes.
+
+One-time maintainer setup:
+- A Trusted Publishing policy on nuget.org (`navigatsql-release`) bound to this repo and `release.yml`.
+- A repo secret **`NUGET_USER`** = your nuget.org profile name (not your email).
+
+To cut a release:
+1. Ensure `<Version>` in `navigatsql.csproj` is current (it's also the kggraph `producerVersion`).
+2. Tag and push: `git tag v0.1.0 && git push origin v0.1.0`. The workflow tests, packs with the
+   tag's version, and publishes. (Use the **Run workflow** dispatch with a `version` input for a manual run.)
+
 By contributing, you agree that your contributions are licensed under the [MIT License](./LICENSE).
