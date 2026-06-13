@@ -37,6 +37,22 @@ bash scripts/check_name_denylist.sh
 A `.pre-commit-config.yaml` wires these plus conventional-commit validation; install with
 `pre-commit install --hook-type commit-msg --hook-type pre-commit` (optional but recommended).
 
+## Clean-room install testing
+
+`scripts/test-install-container.sh` validates the install paths in pristine Linux
+containers — Apple [`container`](https://github.com/apple/container) by default, or
+`CONTAINER_RUNTIME=docker` — so no host state can mask a packaging bug. It does a
+from-scratch build + test, installs the CLI via `dotnet tool install --global` from a
+freshly packed local feed (a faithful proxy for the `nuget.org` install), and runs the
+self-contained binary in a bare image with **no .NET present**. It's a maintainer
+pre-release check (GitHub-hosted CI can't run Apple `container`).
+
+```bash
+scripts/test-install-container.sh                  # fresh-clone main of the public repo
+REF=v0.1.0 scripts/test-install-container.sh       # a specific tag / branch / sha
+REPO_DIR="$PWD" scripts/test-install-container.sh  # test a local checkout instead of cloning
+```
+
 ## Conventions
 
 - **Conventional commits** — `feat:` / `fix:` / `docs:` / `test:` / `refactor:` …
