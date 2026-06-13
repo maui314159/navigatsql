@@ -1,0 +1,62 @@
+# Publish the `navigatsql` .NET global tool to nuget.org on a `v*` tag.
+#
+# Uses NuGet.org Trusted Publishing (OIDC) — no long-lived API key is stored. A Trusted
+# Publishing policy on nuget.org (bound to this repo + this workflow file) lets
+# `NuGet/login` exchange a GitHub OIDC token for a short-lived (1-hour) publish key.
+# One-time maintainer setup: the nuget.org policy + a `NUGET_USER` repo secret (your
+# nuget.org profile name). See CONTRIBUTING → "Releasing".
+name: Publish (NuGet)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to pack/publish, without leading v (e.g. 0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write # required for Trusted Publishing (GitHub OIDC)
+
+jobs:
+  publish:
+    name: Pack + publish to nuget.org
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="${{ inputs.version }}"
+          fi
+          echo "v=$V" >> "$GITHUB_OUTPUT"
+          echo "Publishing version: $V"
+
+      - name: Test (never publish a red build)
+        run: dotnet test tests/NavigaTSql.Tests
+
+      - name: Pack the tool
+        run: dotnet pack navigatsql.csproj -c Release -p:Version=${{ steps.ver.outputs.v }} -o ./artifacts
+
+      # Mint the short-lived key right before push (it expires in 1 hour).
+      - name: NuGet login (OIDC → short-lived key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to nuget.org
+        run: >
+          dotnet nuget push "./artifacts/*.nupkg"
+          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
