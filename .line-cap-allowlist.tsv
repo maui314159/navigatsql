@@ -1,0 +1,6 @@
+# .line-cap-allowlist.tsv — grandfathered files over the 500-line cap.
+# Format: <relative/path><TAB><budget>  (budget = frozen max line count).
+# Ratchet: budgets may only DECREASE; when a file drops <= 500 remove it.
+# Regenerate with: scripts/check_line_cap.sh --update  (use --seed only to bootstrap).
+tests/NavigaTSql.Tests/TSqlCallsViewsDynamicTests.cs	521
+tests/NavigaTSql.Tests/TSqlReadsWritesTests.cs	664

@@ -1,0 +1,26 @@
+# Name-denylist gate — fails if a confidential internal/portfolio-company name
+# reappears in a tracked file. Cheap insurance for keeping this repo public after
+# the one-time scrub (see scripts/check_name_denylist.sh and CONTRIBUTING.md).
+#
+# Pure grep — no .NET toolchain or build needed, so it runs as its own fast job.
+name: Name denylist
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: name-denylist-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  name-denylist:
+    name: Internal-name denylist
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for forbidden internal names
+        run: bash scripts/check_name_denylist.sh

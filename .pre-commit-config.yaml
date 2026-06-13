@@ -1,0 +1,45 @@
+# Pre-commit hooks for navigaT-SQL — mirrors the trusty-tools setup (essentials).
+# Install once:  uv tool install pre-commit && pre-commit install --hook-type commit-msg --hook-type pre-commit
+# Run on demand: pre-commit run --all-files
+#
+# See https://pre-commit.com for more information.
+repos:
+  # Standard hygiene hooks.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(.*\.md|.*\.txt)$
+      - id: end-of-file-fixer
+        exclude: ^(.*\.md|.*\.txt)$
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Conventional commits (feat:/fix:/docs:/test: …) — validated on commit-msg.
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.16.3
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  # Ratcheted 500-line file-size cap. Fails the commit when a new tracked .cs
+  # file exceeds 500 lines, an allowlisted file grows past its frozen budget, or
+  # an allowlisted file dropped <= 500 (remove its entry). Runs against the whole
+  # tracked tree (pass_filenames: false) so the ratchet is evaluated holistically.
+  - repo: local
+    hooks:
+      - id: line-cap
+        name: 500-line file-size cap (ratcheted allowlist)
+        entry: scripts/check_line_cap.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+default_stages: [pre-commit]
+fail_fast: false

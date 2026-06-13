@@ -1,0 +1,60 @@
+# CI for navigaT-SQL — mirrors the trusty-tools gate philosophy, adapted to .NET:
+#   format check (cargo fmt --check  -> dotnet format whitespace --verify),
+#   build with warnings-as-errors    (clippy -D warnings -> dotnet build -warnaserror),
+#   test                             (cargo test          -> dotnet test).
+# Separate jobs so a formatting nit doesn't mask a real test failure.
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Cancel superseded runs for the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+jobs:
+  format:
+    name: Format check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: dotnet format whitespace --verify-no-changes
+        run: |
+          dotnet format whitespace navigatsql.csproj --verify-no-changes
+          dotnet format whitespace tests/NavigaTSql.Tests/NavigaTSql.Tests.csproj --verify-no-changes
+
+  build:
+    name: Build (warnings as errors)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: dotnet build -warnaserror
+        run: dotnet build navigatsql.csproj -warnaserror -v minimal
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: dotnet test
+        run: dotnet test tests/NavigaTSql.Tests/NavigaTSql.Tests.csproj -v minimal
