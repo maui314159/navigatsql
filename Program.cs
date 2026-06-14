@@ -19,6 +19,7 @@ using Microsoft.CodeAnalysis.CSharp;
 // --emit kggraph           : deduplicated nodes+edges+facts ingest document (ADR-0009 wire shape)
 bool ef = false;
 bool dbFromFilename = false;
+bool trustySetup = false;
 string emit = "edges";
 var paths = new List<string>();
 bool badArgs = false;
@@ -28,6 +29,7 @@ for (int i = 0; i < args.Length; i++)
     {
         case "--ef": ef = true; break;
         case "--db-from-filename": dbFromFilename = true; break;
+        case "--trusty-setup": trustySetup = true; break;
         case "--emit" when i + 1 < args.Length: emit = args[++i]; break;
         case "--emit": Console.Error.WriteLine("error: --emit requires a value (edges | kggraph)"); badArgs = true; break;
         case var a when a.StartsWith("--emit=", StringComparison.Ordinal): emit = a["--emit=".Length..]; break;
@@ -41,6 +43,13 @@ if (emit is not ("edges" or "kggraph"))
     Console.Error.WriteLine($"error: unknown --emit mode: {emit} (expected: edges | kggraph)");
     badArgs = true;
 }
+// --trusty-setup is an informational command: print how to feed output into
+// trusty-search and exit 0, before any file/usage handling (it needs no inputs).
+if (trustySetup)
+{
+    PrintWiringGuide();
+    return 0;
+}
 if (badArgs || paths.Count == 0)
 {
     Console.Error.WriteLine("navigaT-SQL — extract cross-tier T-SQL + C# data-flow relations.");
@@ -49,6 +58,7 @@ if (badArgs || paths.Count == 0)
     Console.Error.WriteLine("       --emit edges       : flat edge array (default)");
     Console.Error.WriteLine("       --emit kggraph     : deduplicated nodes+edges+facts ingest document");
     Console.Error.WriteLine("       --db-from-filename : use each .sql file's name as its database context");
+    Console.Error.WriteLine("       --trusty-setup     : print how to wire output into trusty-search, then exit");
     Console.Error.WriteLine("       JSON -> stdout ; summary -> stderr");
     return 2;
 }
@@ -146,6 +156,10 @@ if (emit == "kggraph")
     Console.Error.WriteLine(
         $"kggraph proc identity: {resolve.Resolved} bare C# target(s) resolved to a schema-qualified " +
         $"definition, {resolve.Unresolved} unresolved, {resolve.Ambiguous} ambiguous (left bare).");
+    // Point at the wiring recipe right when an ingest-shaped document was produced.
+    Console.Error.WriteLine(
+        "-> Ingest into trusty-search (>= 0.24.5) via POST /indexes/{id}/graph; " +
+        "run `navigatsql --trusty-setup` for the full recipe.");
 }
 else
 {
@@ -193,3 +207,37 @@ static IEnumerable<string> EnumerateCode(string dir)
 
 // Path relative to the working directory, for compact, portable provenance.
 static string Rel(string full) => Path.GetRelativePath(Directory.GetCurrentDirectory(), full);
+
+// The canonical "how to feed trusty-search" message, printed by --trusty-setup (and
+// pointed at from the kggraph summary). stderr only, so stdout stays data-clean even
+// here. Kept in sync with README "Feeding the graph (trusty-tools integration)".
+static void PrintWiringGuide()
+{
+    var w = Console.Error;
+    w.WriteLine("navigaT-SQL -> trusty-search wiring");
+    w.WriteLine("==================================");
+    w.WriteLine("`--emit kggraph` output is the NATIVE ingest body for trusty-search's");
+    w.WriteLine("contributed knowledge graph -- no converter or shim needed.");
+    w.WriteLine();
+    w.WriteLine("Requires trusty-search >= 0.24.5 (the POST /indexes/{id}/graph endpoint;");
+    w.WriteLine("0.24.0-0.24.4 lack the route and return 404).");
+    w.WriteLine("  check:   curl -s http://127.0.0.1:7878/health        # see \"version\"");
+    w.WriteLine("  upgrade: curl -s -X POST http://127.0.0.1:7878/upgrade \\");
+    w.WriteLine("             -H 'content-type: application/json' -d '{\"confirm\":true}'");
+    w.WriteLine();
+    w.WriteLine("Ingest (replace-per-producer):");
+    w.WriteLine("  ID=<your index id>      # list: curl -s http://127.0.0.1:7878/indexes");
+    w.WriteLine("  navigatsql --emit kggraph <repo> \\");
+    w.WriteLine("    | curl -sS -X POST http://127.0.0.1:7878/indexes/$ID/graph \\");
+    w.WriteLine("           -H 'content-type: application/json' --data-binary @-");
+    w.WriteLine();
+    w.WriteLine("When to re-run: navigaT-SQL is one-shot (no watcher). Re-run the pipe");
+    w.WriteLine("  whenever the SQL/C# source changes; a trusty-search reindex does NOT");
+    w.WriteLine("  refresh this overlay, so the refresh is on you. Replace-per-producer");
+    w.WriteLine("  makes re-POSTing safe and idempotent -- wire it into CI on merge.");
+    w.WriteLine();
+    w.WriteLine("Query:      GET /indexes/{id}/graph/neighbors  (or the search_kg MCP tool)");
+    w.WriteLine("Standalone: no trusty-search? --emit kggraph / --emit edges is plain JSON;");
+    w.WriteLine("            consume it directly.");
+    w.WriteLine("Full guide: README \"Feeding the graph (trusty-tools integration)\".");
+}
