@@ -337,4 +337,108 @@ class Repo {
         Assert.Contains(refs, t => t.relation == "writes_table" && t.table == "dbo.auditlog");
         Assert.DoesNotContain(refs, t => t.relation == "reads_table" && t.table == "dbo.auditlog");
     }
+
+    // ============================================================ CommandType.StoredProcedure (#12)
+    // Convention-free proc names are recognized when the call explicitly declares
+    // CommandType.StoredProcedure, regardless of naming prefix.
+
+    // PascalCase proc via Dapper with a named commandType: arg -> one calls_proc edge.
+    [Fact]
+    public void Dapper_named_commandType_storedproc_emits_calls_proc_edge()
+    {
+        const string code = @"
+class Repo {
+    void Insert() {
+        conn.Execute(""CampaignMappingInsert"", _params, commandType: CommandType.StoredProcedure);
+    }
+}";
+        var r = Run(code);
+
+        var edge = FindEdge(r, "calls_proc", "CampaignMappingInsert");
+        Assert.NotNull(edge);
+        Assert.Equal("csharp_method", edge!.FromKind);
+        Assert.Equal("Repo.Insert", edge.From);
+        Assert.Equal("proc", edge.ToKind);
+        Assert.Equal("custom:calls_proc", edge.EdgeKindTag);
+    }
+
+    // Positional CommandType.StoredProcedure arg -> edge.
+    [Fact]
+    public void Ado_positional_commandType_storedproc_emits_calls_proc_edge()
+    {
+        const string code = @"
+class Repo {
+    void Load() {
+        db.Query<Row>(""GetBroadcastSMSQueue"", p, null, true, 30, CommandType.StoredProcedure);
+    }
+}";
+        var r = Run(code);
+
+        var edge = FindEdge(r, "calls_proc", "GetBroadcastSMSQueue");
+        Assert.NotNull(edge);
+        Assert.Equal("Repo.Load", edge!.From);
+    }
+
+    // Fully-qualified System.Data.CommandType.StoredProcedure -> edge.
+    [Fact]
+    public void Qualified_system_data_commandType_storedproc_emits_calls_proc_edge()
+    {
+        const string code = @"
+class Repo {
+    void Run() {
+        conn.Execute(""ProcessQueue"", _p, commandType: System.Data.CommandType.StoredProcedure);
+    }
+}";
+        var r = Run(code);
+
+        Assert.NotNull(FindEdge(r, "calls_proc", "ProcessQueue"));
+    }
+
+    // Guard: a literal arg on a call WITHOUT the StoredProcedure marker emits nothing
+    // (the proc name is convention-free, so neither ProcShaped nor SqlShaped fires).
+    [Fact]
+    public void Literal_arg_without_storedproc_marker_emits_no_edge()
+    {
+        const string code = @"
+class Repo {
+    void Load() {
+        conn.Query<Row>(""CampaignMappingInsert"", p);
+    }
+}";
+        var r = Run(code);
+
+        Assert.Empty(r.Edges);
+    }
+
+    // Guard: CommandType.Text must NOT trigger the marker path.
+    [Fact]
+    public void CommandType_Text_marker_emits_no_edge()
+    {
+        const string code = @"
+class Repo {
+    void Load() {
+        conn.Query<Row>(""CampaignMappingInsert"", p, commandType: CommandType.Text);
+    }
+}";
+        var r = Run(code);
+
+        Assert.Empty(r.Edges);
+    }
+
+    // Dedup: a USP_-named call that ALSO passes the marker emits exactly one edge.
+    [Fact]
+    public void Convention_named_call_with_storedproc_marker_emits_one_edge()
+    {
+        const string code = @"
+class Repo {
+    void Validate() {
+        conn.Execute(""USP_ValidateUserByCompanyIDandPhone"", p, commandType: CommandType.StoredProcedure);
+    }
+}";
+        var r = Run(code);
+
+        var edges = r.Edges.Where(e => e.Relation == "calls_proc" &&
+                                       e.To == "USP_ValidateUserByCompanyIDandPhone").ToList();
+        Assert.Single(edges);
+    }
 }
