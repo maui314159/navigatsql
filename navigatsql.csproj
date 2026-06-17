@@ -8,7 +8,7 @@
     <AssemblyName>navigatsql</AssemblyName>
     <RootNamespace>NavigaTSql</RootNamespace>
     <!-- Surfaced as the kggraph envelope's producerVersion (#2). -->
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
   </PropertyGroup>
 
   <!-- .NET global-tool packaging (#3): `dotnet pack` produces a tool package that
